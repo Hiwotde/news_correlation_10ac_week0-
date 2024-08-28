@@ -1,16 +1,10 @@
 import os
-import sys
-import glob
 import json
-import datetime
-from collections import Counter
-from collections import Counter
-
 import pandas as pd
-from matplotlib import pyplot as plt
+from datetime import datetime
+from collections import Counter
 import seaborn as sns
-from nltk.corpus import stopwords
-
+import matplotlib.pyplot as plt
 
 def break_combined_weeks(combined_weeks):
     """
@@ -35,148 +29,104 @@ def break_combined_weeks(combined_weeks):
 
     return plus_one_week, minus_one_week
 
-def get_msgs_df_info(df):
-    msgs_count_dict = df.user.value_counts().to_dict()
-    replies_count_dict = dict(Counter([u for r in df.replies if r != None for u in r]))
-    mentions_count_dict = dict(Counter([u for m in df.mentions if m != None for u in m]))
-    links_count_dict = df.groupby("user").link_count.sum().to_dict()
-    return msgs_count_dict, replies_count_dict, mentions_count_dict, links_count_dict
-
-
-
-def get_messages_dict(msgs):
-    msg_list = {
-            "msg_id":[],
-            "text":[],
-            "attachments":[],
-            "user":[],
-            "mentions":[],
-            "emojis":[],
-            "reactions":[],
-            "replies":[],
-            "replies_to":[],
-            "ts":[],
-            "links":[],
-            "link_count":[]
-            }
-
-
-    for msg in msgs:
-        if "subtype" not in msg:
-            try:
-                msg_list["msg_id"].append(msg["client_msg_id"])
-            except:
-                msg_list["msg_id"].append(None)
-            
-            msg_list["text"].append(msg["text"])
-            msg_list["user"].append(msg["user"])
-            msg_list["ts"].append(msg["ts"])
-            
-            if "reactions" in msg:
-                msg_list["reactions"].append(msg["reactions"])
-            else:
-                msg_list["reactions"].append(None)
-
-            if "parent_user_id" in msg:
-                msg_list["replies_to"].append(msg["ts"])
-            else:
-                msg_list["replies_to"].append(None)
-
-            if "thread_ts" in msg and "reply_users" in msg:
-                msg_list["replies"].append(msg["replies"])
-            else:
-                msg_list["replies"].append(None)
-            
-            if "blocks" in msg:
-                emoji_list = []
-                mention_list = []
-                link_count = 0
-                links = []
-                
-                for blk in msg["blocks"]:
-                    if "elements" in blk:
-                        for elm in blk["elements"]:
-                            if "elements" in elm:
-                                for elm_ in elm["elements"]:
-                                    
-                                    if "type" in elm_:
-                                        if elm_["type"] == "emoji":
-                                            emoji_list.append(elm_["name"])
-
-                                        if elm_["type"] == "user":
-                                            mention_list.append(elm_["user_id"])
-                                        
-                                        if elm_["type"] == "link":
-                                            link_count += 1
-                                            links.append(elm_["url"])
-
-
-                msg_list["emojis"].append(emoji_list)
-                msg_list["mentions"].append(mention_list)
-                msg_list["links"].append(links)
-                msg_list["link_count"].append(link_count)
-            else:
-                msg_list["emojis"].append(None)
-                msg_list["mentions"].append(None)
-                msg_list["links"].append(None)
-                msg_list["link_count"].append(0)
+def get_news_df_info(df):
+    """
+    Extracts various statistics from the news DataFrame.
     
-    return msg_list
+    Args:
+        df: pandas DataFrame containing news articles
+        
+    Returns:
+        Tuple with dictionaries of article count by source, word count, etc.
+    """
+    # Count articles by source
+    articles_count_dict = df['source_name'].value_counts().to_dict()
+    
+    # Count mentions by source
+    mentions_count_dict = df['mentions'].dropna().apply(lambda x: len(x.split(','))).groupby(df['source_name']).sum().to_dict()
 
-def from_msg_get_replies(msg):
-    replies = []
-    if "thread_ts" in msg and "replies" in msg:
+    # Count links by source
+    links_count_dict = df.groupby("source_name")['link_count'].sum().to_dict()
+    
+    return articles_count_dict, mentions_count_dict, links_count_dict
+
+def get_articles_dict(articles):
+    """
+    Converts articles data into a dictionary format.
+    
+    Args:
+        articles: list of article dictionaries
+        
+    Returns:
+        Dictionary with article data
+    """
+    article_list = {
+        "article_id": [],
+        "title": [],
+        "description": [],
+        "content": [],
+        "source_name": [],
+        "published_at": [],
+        "category": [],
+        "links": [],
+        "link_count": []
+    }
+
+    for article in articles:
         try:
-            for reply in msg["replies"]:
-                reply["thread_ts"] = msg["thread_ts"]
-                reply["message_id"] = msg["client_msg_id"]
-                replies.append(reply)
-        except:
-            pass
-    return replies
-
-def msgs_to_df(msgs):
-    msg_list = get_messages_dict(msgs)
-    df = pd.DataFrame(msg_list)
-    return df
-
-def process_msgs(msg):
-    '''
-    select important columns from the message
-    '''
-
-    keys = ["client_msg_id", "type", "text", "user", "ts", "team", 
-            "thread_ts", "reply_count", "reply_users_count"]
-    msg_list = {k:msg[k] for k in keys}
-    rply_list = from_msg_get_replies(msg)
-
-    return msg_list, rply_list
-
-def get_messages_from_channel(channel_path):
-    '''
-    get all the messages from a channel        
-    '''
-    channel_json_files = os.listdir(channel_path)
-    channel_msgs = [json.load(open(channel_path + "/" + f)) for f in channel_json_files]
-
-    df = pd.concat([pd.DataFrame(get_messages_dict(msgs)) for msgs in channel_msgs])
-    print(f"Number of messages in channel: {len(df)}")
+            article_list["article_id"].append(article.get("article_id", None))
+            article_list["title"].append(article.get("title", ""))
+            article_list["description"].append(article.get("description", ""))
+            article_list["content"].append(article.get("content", ""))
+            article_list["source_name"].append(article.get("source_name", ""))
+            article_list["published_at"].append(article.get("published_at", ""))
+            article_list["category"].append(article.get("category", ""))
+            article_list["links"].append(article.get("links", ""))
+            article_list["link_count"].append(len(article.get("links", [])))
+        except Exception as e:
+            print(f"Error processing article: {e}")
     
-    return df
-
+    return article_list
 
 def convert_2_timestamp(column, data):
-    """convert from unix time to readable timestamp
-        args: column: columns that needs to be converted to timestamp
-                data: data that has the specified column
+    """
+    Converts Unix timestamps to readable timestamps.
+    
+    Args:
+        column: column name to be converted
+        data: DataFrame with the column
+    
+    Returns:
+        List of formatted timestamps
     """
     if column in data.columns.values:
         timestamp_ = []
         for time_unix in data[column]:
-            if time_unix == 0:
-                timestamp_.append(0)
+            if pd.isna(time_unix) or time_unix == 0:
+                timestamp_.append(None)
             else:
-                a = datetime.datetime.fromtimestamp(float(time_unix))
+                a = datetime.fromtimestamp(float(time_unix))
                 timestamp_.append(a.strftime('%Y-%m-%d %H:%M:%S'))
         return timestamp_
-    else: print(f"{column} not in data")
+    else:
+        print(f"{column} not in data")
+        return []
+
+def plot_article_counts(df, top_n=10):
+    """
+    Plots the top N sources by the number of articles.
+    
+    Args:
+        df: DataFrame with article data
+        top_n: Number of top sources to plot
+        
+    Returns:
+        None
+    """
+    article_counts = df['source_name'].value_counts().head(top_n)
+    plt.figure(figsize=(12, 8))
+    sns.barplot(x=article_counts.values, y=article_counts.index, palette='viridis')
+    plt.xlabel('Number of Articles')
+    plt.ylabel('Source Name')
+    plt.title(f'Top {top_n} News Sources by Number of Articles')
+    plt.show()

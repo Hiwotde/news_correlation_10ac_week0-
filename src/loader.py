@@ -1,84 +1,80 @@
-import json
-import argparse
+import pandas as pd
 import os
-import io
-import shutil
-import copy
-from datetime import datetime
-from pick import pick
-from time import sleep
 
-
-
-# Create wrapper classes for using slack_sdk in place of slacker
-class SlackDataLoader:
+class NewsDataLoader:
     '''
-    Slack exported data IO class.
+    News data IO class.
 
-    When you open slack exported ZIP file, each channel or direct message 
-    will have its own folder. Each folder will contain messages from the 
-    conversation, organised by date in separate JSON files.
+    This class handles the loading and processing of news data files.
 
-    You'll see reference files for different kinds of conversations: 
-    users.json files for all types of users that exist in the slack workspace
-    channels.json files for public channels, 
-    
-    These files contain metadata about the conversations, including their names and IDs.
+    The data is organized by articles, including metadata such as the article title,
+    description, and publication date.
 
-    For secruity reason, we have annonymized names - the names you will see are generated using faker library.
-    
     '''
     def __init__(self, path):
         '''
-        path: path to the slack exported data folder
+        path: path to the directory containing news data files
         '''
         self.path = path
-        self.channels = self.get_channels()
-        self.users = self.get_ussers()
-    
+        self.articles = self.get_articles()
 
-    def get_users(self):
+    def get_articles(self):
         '''
-        write a function to get all the users from the json file
+        Function to load articles from the CSV file.
         '''
-        with open(os.path.join(self.path, 'users.json'), 'r') as f:
-            users = json.load(f)
+        file_path = os.path.join(self.path, 'data.csv')
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+        articles = pd.read_csv(file_path)
+        return articles
 
-        return users
-    
-    def get_channels(self):
+    def get_articles_by_category(self, category):
         '''
-        write a function to get all the channels from the json file
+        Function to get articles filtered by a specific category.
         '''
-        with open(os.path.join(self.path, 'channels.json'), 'r') as f:
-            channels = json.load(f)
+        filtered_articles = self.articles[self.articles['category'] == category]
+        return filtered_articles
 
-        return channels
-
-    def get_channel_messages(self, channel_name):
+    def get_top_websites_by_article_count(self, top_n=10):
         '''
-        write a function to get all the messages from a channel
-        
+        Function to get top N websites by the number of articles.
         '''
+        top_websites = self.articles['source_name'].value_counts().head(top_n)
+        return top_websites
 
-    # 
-    def get_user_map(self):
+    def get_highest_traffic_websites(self, traffic_data_path, top_n=10):
         '''
-        write a function to get a map between user id and user name
+        Function to get top N websites by traffic from the traffic data file.
         '''
-        userNamesById = {}
-        userIdsByName = {}
-        for user in self.users:
-            userNamesById[user['id']] = user['name']
-            userIdsByName[user['name']] = user['id']
-        return userNamesById, userIdsByName        
+        traffic_data = pd.read_csv(traffic_data_path)
+        merged_data = pd.merge(self.articles, traffic_data, left_on='source_name', right_on='Domain', how='left')
+        highest_traffic_websites = merged_data[['source_name', 'GlobalRank']].dropna().sort_values(by='GlobalRank').head(top_n)
+        return highest_traffic_websites
 
-
-
+    def get_articles_by_sentiment(self, sentiment):
+        '''
+        Function to get articles filtered by sentiment.
+        '''
+        filtered_articles = self.articles[self.articles['title_sentiment'] == sentiment]
+        return filtered_articles
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Export Slack history')
+    import argparse
 
-    
-    parser.add_argument('--zip', help="Name of a zip file to import")
+    parser = argparse.ArgumentParser(description='Load and analyze news data')
+
+    parser.add_argument('--data-path', help="Path to the directory containing news data files", required=True)
+    parser.add_argument('--traffic-data-path', help="Path to the global website traffic data file", required=True)
     args = parser.parse_args()
+
+    loader = NewsDataLoader(args.data_path)
+
+    # Example usage
+    print("Top websites by article count:")
+    print(loader.get_top_websites_by_article_count())
+
+    print("\nWebsites with highest traffic:")
+    print(loader.get_highest_traffic_websites(args.traffic_data_path))
+
+    print("\nExample articles with positive sentiment:")
+    print(loader.get_articles_by_sentiment('positive').head())
